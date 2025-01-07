@@ -20,16 +20,51 @@ import kotlin.reflect.typeOf
  * @constructor Create a new [Option].
  */
 @Suppress("MemberVisibilityCanBePrivate", "unused")
-class Option<T> @PublishedApi internal constructor(
+class Option<T>
+@PublishedApi
+@Deprecated("Use the constructor with the name instead of a key instead.")
+internal constructor(
+    @Deprecated("Use the name property instead.")
     val key: String,
     val default: T? = null,
     val values: Map<String, T?>? = null,
+    @Deprecated("Use the name property instead.")
     val title: String? = null,
     val description: String? = null,
     val required: Boolean = false,
     val type: KType,
     val validator: Option<T>.(T?) -> Boolean = { true },
 ) {
+    /**
+     * The name.
+     */
+    val name = key
+
+    /**
+     * An option.
+     *
+     * @param T The value type of the option.
+     * @param name The name.
+     * @param default The default value.
+     * @param values Eligible option values mapped to a human-readable name.
+     * @param description A description.
+     * @param required Whether the option is required.
+     * @param type The type of the option value (to handle type erasure).
+     * @param validator The function to validate the option value.
+     *
+     * @constructor Create a new [Option].
+     */
+    @PublishedApi
+    internal constructor(
+        name: String,
+        default: T? = null,
+        values: Map<String, T?>? = null,
+        description: String? = null,
+        required: Boolean = false,
+        type: KType,
+        validator: Option<T>.(T?) -> Boolean = { true },
+    ) : this(name, default, values, name, description, required, type, validator)
+
     /**
      * The value of the [Option].
      */
@@ -109,7 +144,7 @@ class Option<T> @PublishedApi internal constructor(
 class Options internal constructor(
     private val options: Map<String, Option<*>>,
 ) : Map<String, Option<*>> by options {
-    internal constructor(options: Set<Option<*>>) : this(options.associateBy { it.key })
+    internal constructor(options: Set<Option<*>>) : this(options.associateBy { it.name })
 
     /**
      * Set an option's value.
@@ -856,14 +891,14 @@ sealed class OptionException(errorMessage: String) : Exception(errorMessage, nul
      *
      * @param value The value that failed validation.
      */
-    class ValueValidationException(value: Any?, option: Option<*>) : OptionException("The option value \"$value\" failed validation for ${option.key}")
+    class ValueValidationException(value: Any?, option: Option<*>) : OptionException("The option value \"$value\" failed validation for ${option.name}")
 
     /**
      * An exception thrown when a value is required but null was passed.
      *
      * @param option The [Option] that requires a value.
      */
-    class ValueRequiredException(option: Option<*>) : OptionException("The option ${option.key} requires a value, but the value was null")
+    class ValueRequiredException(option: Option<*>) : OptionException("The option ${option.name} requires a value, but the value was null")
 
     /**
      * An exception thrown when a [Option] is not found.

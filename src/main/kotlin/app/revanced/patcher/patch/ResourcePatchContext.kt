@@ -10,9 +10,9 @@ import brut.androlib.ApkDecoder
 import brut.androlib.apk.UsesFramework
 import brut.androlib.res.Framework
 import brut.androlib.res.ResourcesDecoder
+import brut.androlib.res.decoder.AndroidManifestPullStreamDecoder
 import brut.androlib.res.decoder.AndroidManifestResourceParser
-import brut.androlib.res.decoder.XmlPullStreamDecoder
-import brut.androlib.res.xml.ResXmlPatcher
+import brut.androlib.res.xml.ResXmlUtils
 import brut.directory.ExtFile
 import java.io.InputStream
 import java.io.OutputStream
@@ -51,64 +51,62 @@ class ResourcePatchContext internal constructor(
      *
      * @param mode The [ResourceMode] to use.
      */
-    internal fun decodeResources(mode: ResourceMode) =
-        with(packageMetadata.apkInfo) {
-            config.initializeTemporaryFilesDirectories()
+    internal fun decodeResources(mode: ResourceMode) = with(packageMetadata.apkInfo) {
+        config.initializeTemporaryFilesDirectories()
 
-            // Needed to decode resources.
-            val resourcesDecoder = ResourcesDecoder(config.resourceConfig, this)
+        // Needed to decode resources.
+        val resourcesDecoder = ResourcesDecoder(config.resourceConfig, this)
 
-            if (mode == ResourceMode.FULL) {
-                logger.info("Decoding resources")
+        if (mode == ResourceMode.FULL) {
+            logger.info("Decoding resources")
 
-                resourcesDecoder.decodeResources(config.apkFiles)
-                resourcesDecoder.decodeManifest(config.apkFiles)
+            resourcesDecoder.decodeResources(config.apkFiles)
+            resourcesDecoder.decodeManifest(config.apkFiles)
 
-                // Needed to record uncompressed files.
-                val apkDecoder = ApkDecoder(config.resourceConfig, this)
-                apkDecoder.recordUncompressedFiles(resourcesDecoder.resFileMapping)
+            // Needed to record uncompressed files.
+            ApkDecoder(this, config.resourceConfig).recordUncompressedFiles(resourcesDecoder.resFileMapping)
 
-                usesFramework =
-                    UsesFramework().apply {
-                        ids = resourcesDecoder.resTable.listFramePackages().map { it.id }
-                    }
-            } else {
-                logger.info("Decoding app manifest")
-
-                // Decode manually instead of using resourceDecoder.decodeManifest
-                // because it does not support decoding to an OutputStream.
-                XmlPullStreamDecoder(
-                    AndroidManifestResourceParser(resourcesDecoder.resTable),
-                    resourcesDecoder.resXmlSerializer,
-                ).decodeManifest(
-                    apkFile.directory.getFileInput("AndroidManifest.xml"),
-                    // Older Android versions do not support OutputStream.nullOutputStream()
-                    object : OutputStream() {
-                        override fun write(b: Int) { // Do nothing.
-                        }
-                    },
-                )
-
-                // Get the package name and version from the manifest using the XmlPullStreamDecoder.
-                // XmlPullStreamDecoder.decodeManifest() sets metadata.apkInfo.
-                packageMetadata.let { metadata ->
-                    metadata.packageName = resourcesDecoder.resTable.packageRenamed
-                    versionInfo.let {
-                        metadata.packageVersion = it.versionName ?: it.versionCode
-                    }
-
-                    /*
-                     The ResTable if flagged as sparse if the main package is not loaded, which is the case here,
-                     because ResourcesDecoder.decodeResources loads the main package
-                     and not XmlPullStreamDecoder.decodeManifest.
-                     See ARSCDecoder.readTableType for more info.
-
-                     Set this to false again to prevent the ResTable from being flagged as sparse falsely.
-                     */
-                    metadata.apkInfo.sparseResources = false
+            usesFramework =
+                UsesFramework().apply {
+                    ids = resourcesDecoder.resTable.listFramePackages().map { it.id }
                 }
+        } else {
+            logger.info("Decoding app manifest")
+
+            // Decode manually instead of using resourceDecoder.decodeManifest
+            // because it does not support decoding to an OutputStream.
+            AndroidManifestPullStreamDecoder(
+                AndroidManifestResourceParser(resourcesDecoder.resTable),
+                resourcesDecoder.newXmlSerializer(),
+            ).decode(
+                apkFile.directory.getFileInput("AndroidManifest.xml"),
+                // Older Android versions do not support OutputStream.nullOutputStream()
+                object : OutputStream() {
+                    override fun write(b: Int) { // Do nothing.
+                    }
+                },
+            )
+
+            // Get the package name and version from the manifest using the XmlPullStreamDecoder.
+            // AndroidManifestPullStreamDecoder.decode() sets metadata.apkInfo.
+            packageMetadata.let { metadata ->
+                metadata.packageName = resourcesDecoder.resTable.packageRenamed
+                versionInfo.let {
+                    metadata.packageVersion = it.versionName ?: it.versionCode
+                }
+
+                /*
+                 The ResTable if flagged as sparse if the main package is not loaded, which is the case here,
+                 because ResourcesDecoder.decodeResources loads the main package
+                 and not AndroidManifestPullStreamDecoder.decode.
+                 See ARSCDecoder.readTableType for more info.
+
+                 Set this to false again to prevent the ResTable from being flagged as sparse falsely.
+                 */
+                metadata.apkInfo.sparseResources = false
             }
         }
+    }
 
     /**
      * Compile resources in [PatcherConfig.apkFiles].
@@ -130,10 +128,10 @@ class ResourcePatchContext internal constructor(
                     AaptInvoker(
                         config.resourceConfig,
                         packageMetadata.apkInfo,
-                    ).invokeAapt(
+                    ).invoke(
                         resources.resolve("resources.apk"),
                         config.apkFiles.resolve("AndroidManifest.xml").also {
-                            ResXmlPatcher.fixingPublicAttrsInProviderAttributes(it)
+                            ResXmlUtils.fixingPublicAttrsInProviderAttributes(it)
                         },
                         config.apkFiles.resolve("res"),
                         null,

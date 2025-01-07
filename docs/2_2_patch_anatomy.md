@@ -73,22 +73,22 @@ package app.revanced.patches.ads
 val disableAdsPatch = bytecodePatch(
     name = "Disable ads",
     description = "Disable ads in the app.",
-) { 
+) {
     compatibleWith("com.some.app"("1.0.0"))
-    
+
     // Patches can depend on other patches, executing them first.
     dependsOn(disableAdsResourcePatch)
 
     // Merge precompiled DEX files into the patched app, before the patch is executed.
     extendWith("disable-ads.rve")
-    
+
     // Business logic of the patch to disable ads in the app.
     execute {
         // Fingerprint to find the method to patch.
         val showAdsMatch by showAdsFingerprint {
-          // More about fingerprints on the next page of the documentation.
+            // More about fingerprints on the next page of the documentation.
         }
-      
+
         // In the method that shows ads,
         // call DisableAdsPatch.shouldDisableAds() from the extension (precompiled DEX file)
         // to enable or disable ads.
@@ -122,11 +122,11 @@ To define an option, use the available `option` functions:
 ```kt
 val patch = bytecodePatch(name = "Patch") {
     // Add an inbuilt option and delegate it to a property.
-    val value by stringOption(key = "option")
+    val value by stringOption(name = "Inbuilt option")
 
     // Add an option with a custom type and delegate it to a property.
-    val string by option<String>(key = "string")
-    
+    val string by option<String>(name = "String option")
+
     execute {
         println(value)
         println(string)
@@ -139,7 +139,7 @@ Options of a patch can be set after loading the patches with `PatchLoader` by ob
 ```kt
 loadPatchesJar(patches).apply {
     // Type is checked at runtime.
-    first { it.name == "Patch" }.options["option"] = "Value"
+    first { it.name == "Patch" }.options["Option"] = "Value"
 }
 ```
 
@@ -152,7 +152,7 @@ option.type // The KType of the option. Captures the full type information of th
 Options can be declared outside a patch and added to a patch manually:
 
 ```kt
-val option = stringOption(key = "option")
+val option = stringOption(name = "Option")
 
 bytecodePatch(name = "Patch") {
     val value by option()
@@ -183,18 +183,18 @@ and use it in a patch:
 ```kt
 val patch = bytecodePatch(name = "Complex patch") {
     extendWith("complex-patch.rve")
-  
-    execute { 
+
+    execute {
         fingerprint.match!!.mutableMethod.addInstructions(0, "invoke-static { }, LComplexPatch;->doSomething()V")
     }
 }
 ```
 
-ReVanced Patcher merges the classes from the extension into `context.classes` before executing the patch. 
+ReVanced Patcher merges the classes from the extension into `context.classes` before executing the patch.
 When the patch is executed, it can reference the classes and methods from the extension.
 
 > [!NOTE]
-> 
+>
 > The [ReVanced Patches template](https://github.com/ReVanced/revanced-patches-template) repository
 > is a template project to create patches and extensions.
 
@@ -211,9 +211,9 @@ A simple real-world example would be a patch that opens a resource file of the a
 Other patches that depend on this patch can write to the file, and the finalization block can close the file.
 
 ```kt
-val patch = bytecodePatch(name = "Patch") { 
+val patch = bytecodePatch(name = "Patch") {
     dependsOn(
-        bytecodePatch(name = "Dependency") { 
+        bytecodePatch(name = "Dependency") {
             execute {
                 print("1")
             }
@@ -249,10 +249,10 @@ The same order is followed for multiple patches depending on the patch.
 - A patch can declare compatibility with specific packages and versions,
   but patches can still be executed on any package or version.
   It is recommended that compatibility is specified to present known compatible packages and versions.
-   - If `compatibleWith` is not used, the patch is treated as compatible with any package
+    - If `compatibleWith` is not used, the patch is treated as compatible with any package
 - If a package is specified with no versions, the patch is compatible with any version of the package
 - If an empty array of versions is specified, the patch is not compatible with any version of the package.
-    This is useful for declaring incompatibility with a specific package.
+  This is useful for declaring incompatibility with a specific package.
 - A patch can raise a `PatchException` at any time of execution to indicate that the patch failed to execute.
 
 ## ⏭️ What's next

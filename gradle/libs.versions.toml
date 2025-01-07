@@ -1,14 +1,14 @@
 [versions]
 android = "4.1.1.4"
-apktool-lib = "2.9.3"
+apktool-lib = "2.10.1.1"
 binary-compatibility-validator = "0.15.1"
-kotlin = "2.0.0"
+kotlin = "2.0.20"
 kotlinx-coroutines-core = "1.8.1"
 mockk = "1.13.10"
 multidexlib2 = "3.0.3.r3"
 # Tracking https://github.com/google/smali/issues/64.
 #noinspection GradleDependency
-smali = "3.0.5"
+smali = "3.0.8"
 xpp3 = "1.1.4c"
 
 [libraries]

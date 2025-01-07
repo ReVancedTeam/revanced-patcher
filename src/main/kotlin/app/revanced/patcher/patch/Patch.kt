@@ -87,7 +87,8 @@ sealed class Patch<C : PatchContext<*>>(
         finalizeBlock?.invoke(context)
     }
 
-    override fun toString() = name ?: "Patch"
+    override fun toString() = name ?: 
+        "Patch@${System.identityHashCode(this)}"
 }
 
 internal fun Patch<*>.anyRecursively(
@@ -161,7 +162,7 @@ class BytecodePatch internal constructor(
 
     override fun finalize(context: PatcherContext) = finalize(context.bytecodeContext)
 
-    override fun toString() = name ?: "BytecodePatch"
+    override fun toString() = name ?: "Bytecode${super.toString()}"
 }
 
 /**
@@ -204,7 +205,7 @@ class RawResourcePatch internal constructor(
 
     override fun finalize(context: PatcherContext) = finalize(context.resourceContext)
 
-    override fun toString() = name ?: "RawResourcePatch"
+    override fun toString() = name ?: "RawResource${super.toString()}"
 }
 
 /**
@@ -247,7 +248,7 @@ class ResourcePatch internal constructor(
 
     override fun finalize(context: PatcherContext) = finalize(context.resourceContext)
 
-    override fun toString() = name ?: "ResourcePatch"
+    override fun toString() = name ?: "Resource${super.toString()}"
 }
 
 /**
