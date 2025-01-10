@@ -45,10 +45,10 @@ sealed class Patch<C : PatchContext<*>>(
     val dependencies: Set<Patch<*>>,
     val compatiblePackages: Set<Package>?,
     options: Set<Option<*>>,
-    private val executeBlock: (C) -> Unit,
+    private val executeBlock: suspend (C) -> Unit,
     // Must be internal and nullable, so that Patcher.invoke can check,
     // if a patch has a finalizing block in order to not emit it twice.
-    internal var finalizeBlock: ((C) -> Unit)?,
+    internal var finalizeBlock: (suspend (C) -> Unit)?,
 ) {
     /**
      * The options of the patch.
@@ -61,14 +61,14 @@ sealed class Patch<C : PatchContext<*>>(
      *
      * @param context The [PatcherContext] to get the [PatchContext] from to execute the patch with.
      */
-    internal abstract fun execute(context: PatcherContext)
+    internal abstract suspend fun execute(context: PatcherContext)
 
     /**
      * Calls the execution block of the patch.
      *
      * @param context The [PatchContext] to execute the patch with.
      */
-    fun execute(context: C) = executeBlock(context)
+    suspend fun execute(context: C) = executeBlock(context)
 
     /**
      * Calls the finalizing block of the patch.
@@ -76,14 +76,14 @@ sealed class Patch<C : PatchContext<*>>(
      *
      * @param context The [PatcherContext] to get the [PatchContext] from to finalize the patch with.
      */
-    internal abstract fun finalize(context: PatcherContext)
+    internal abstract suspend fun finalize(context: PatcherContext)
 
     /**
      * Calls the finalizing block of the patch.
      *
      * @param context The [PatchContext] to finalize the patch with.
      */
-    fun finalize(context: C) {
+    suspend fun finalize(context: C) {
         finalizeBlock?.invoke(context)
     }
 
@@ -143,8 +143,8 @@ class BytecodePatch internal constructor(
     dependencies: Set<Patch<*>>,
     options: Set<Option<*>>,
     val extensionInputStream: Supplier<InputStream>?,
-    executeBlock: (BytecodePatchContext) -> Unit,
-    finalizeBlock: ((BytecodePatchContext) -> Unit)?,
+    executeBlock: suspend (BytecodePatchContext) -> Unit,
+    finalizeBlock: (suspend (BytecodePatchContext) -> Unit)?,
 ) : Patch<BytecodePatchContext>(
     name,
     description,
@@ -155,12 +155,12 @@ class BytecodePatch internal constructor(
     executeBlock,
     finalizeBlock,
 ) {
-    override fun execute(context: PatcherContext) = with(context.bytecodeContext) {
+    override suspend fun execute(context: PatcherContext) = with(context.bytecodeContext) {
         mergeExtension(this@BytecodePatch)
         execute(this)
     }
 
-    override fun finalize(context: PatcherContext) = finalize(context.bytecodeContext)
+    override suspend fun finalize(context: PatcherContext) = finalize(context.bytecodeContext)
 
     override fun toString() = name ?: "Bytecode${super.toString()}"
 }
@@ -189,8 +189,8 @@ class RawResourcePatch internal constructor(
     compatiblePackages: Set<Package>?,
     dependencies: Set<Patch<*>>,
     options: Set<Option<*>>,
-    executeBlock: (ResourcePatchContext) -> Unit,
-    finalizeBlock: ((ResourcePatchContext) -> Unit)?,
+    executeBlock: suspend (ResourcePatchContext) -> Unit,
+    finalizeBlock: (suspend (ResourcePatchContext) -> Unit)?,
 ) : Patch<ResourcePatchContext>(
     name,
     description,
@@ -201,9 +201,9 @@ class RawResourcePatch internal constructor(
     executeBlock,
     finalizeBlock,
 ) {
-    override fun execute(context: PatcherContext) = execute(context.resourceContext)
+    override suspend fun execute(context: PatcherContext) = execute(context.resourceContext)
 
-    override fun finalize(context: PatcherContext) = finalize(context.resourceContext)
+    override suspend fun finalize(context: PatcherContext) = finalize(context.resourceContext)
 
     override fun toString() = name ?: "RawResource${super.toString()}"
 }
@@ -232,8 +232,8 @@ class ResourcePatch internal constructor(
     compatiblePackages: Set<Package>?,
     dependencies: Set<Patch<*>>,
     options: Set<Option<*>>,
-    executeBlock: (ResourcePatchContext) -> Unit,
-    finalizeBlock: ((ResourcePatchContext) -> Unit)?,
+    executeBlock: suspend (ResourcePatchContext) -> Unit,
+    finalizeBlock: (suspend (ResourcePatchContext) -> Unit)?,
 ) : Patch<ResourcePatchContext>(
     name,
     description,
@@ -244,9 +244,9 @@ class ResourcePatch internal constructor(
     executeBlock,
     finalizeBlock,
 ) {
-    override fun execute(context: PatcherContext) = execute(context.resourceContext)
+    override suspend fun execute(context: PatcherContext) = execute(context.resourceContext)
 
-    override fun finalize(context: PatcherContext) = finalize(context.resourceContext)
+    override suspend fun finalize(context: PatcherContext) = finalize(context.resourceContext)
 
     override fun toString() = name ?: "Resource${super.toString()}"
 }
@@ -278,8 +278,8 @@ sealed class PatchBuilder<C : PatchContext<*>>(
     protected var dependencies = mutableSetOf<Patch<*>>()
     protected val options = mutableSetOf<Option<*>>()
 
-    protected var executionBlock: ((C) -> Unit) = { }
-    protected var finalizeBlock: ((C) -> Unit)? = null
+    protected var executionBlock: (suspend (C) -> Unit) = { }
+    protected var finalizeBlock: (suspend (C) -> Unit)? = null
 
     /**
      * Add an option to the patch.
@@ -338,7 +338,7 @@ sealed class PatchBuilder<C : PatchContext<*>>(
      *
      * @param block The execution block of the patch.
      */
-    fun execute(block: C.() -> Unit) {
+    fun execute(block: suspend C.() -> Unit) {
         executionBlock = block
     }
 
@@ -347,7 +347,7 @@ sealed class PatchBuilder<C : PatchContext<*>>(
      *
      * @param block The finalizing block of the patch.
      */
-    fun finalize(block: C.() -> Unit) {
+    fun finalize(block: suspend C.() -> Unit) {
         finalizeBlock = block
     }
 

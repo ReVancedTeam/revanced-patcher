@@ -13,6 +13,93 @@ import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import com.android.tools.smali.dexlib2.util.MethodUtil
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flatMapMerge
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withContext
+
+/*
+suspend inline fun <T, R> Iterable<T>.concurrentFirstNotNullOfOrNull(crossinline transform: (T) -> R?) =
+    asFlow().flatMapMerge { value ->
+        flow { transform(value)?.let { emit(it) } }
+    }.firstOrNull()
+*/
+/*
+suspend inline fun <T> Iterable<T>.concurrentFind(crossinline predicate: (T) -> Boolean) =
+    asFlow().flatMapMerge { value -> flow { if (predicate(value)) emit(value) } }.firstOrNull()
+*/
+internal fun List<*>.chunks(count: Int): List<Pair<Int, Int>> {
+    if (size <= count) return listOf(0 to lastIndex)
+
+    val chunkSize = size / count
+    val indices = MutableList(count) { (it*chunkSize) + 1 to (it + 1)*chunkSize }
+    indices[0] = 0 to indices[0].second
+    indices[indices.lastIndex] = indices[indices.lastIndex].first to lastIndex
+    return indices
+}
+internal suspend inline fun <T> List<T>.concurrentFind(crossinline predicate: (T) -> Boolean): T? = coroutineScope {
+    val cpus = Runtime.getRuntime().availableProcessors()
+    val completableDeferred = CompletableDeferred<T?>(parent = coroutineContext.job)
+    val jobs = chunks(cpus).map { (start, end) ->
+        launch(Dispatchers.Default) {
+            var i = start
+            while (i <= end) {
+                val element = this@concurrentFind[i]
+                if (predicate(element)) {
+                    completableDeferred.complete(element)
+                    return@launch
+                }
+                i++
+            }
+        }
+    }
+    val notFoundJob = launch {
+        jobs.joinAll()
+        completableDeferred.complete(null)
+    }
+
+    val result = completableDeferred.await()
+    jobs.forEach(Job::cancel)
+    notFoundJob.cancel()
+    result
+}
+
+internal suspend inline fun <T, R> List<T>.concurrentFirstNotNullOfOrNull(crossinline transform: (T) -> R?): R? = coroutineScope {
+    val cpus = Runtime.getRuntime().availableProcessors()
+    val completableDeferred = CompletableDeferred<R?>(parent = coroutineContext.job)
+    val jobs = chunks(cpus).map { (start, end) ->
+        launch(Dispatchers.Default) {
+            var i = start
+            while (i <= end) {
+                val element = this@concurrentFirstNotNullOfOrNull[i]
+                transform(element)?.let { value ->
+                    completableDeferred.complete(value)
+                    return@launch
+                }
+                i++
+            }
+        }
+    }
+    val notFoundJob = launch {
+        jobs.joinAll()
+        completableDeferred.complete(null)
+    }
+
+    val result = completableDeferred.await()
+    jobs.forEach(Job::cancel)
+    notFoundJob.cancel()
+    result
+}
 
 /**
  * A fingerprint for a method. A fingerprint is a partial description of a method.
@@ -51,9 +138,11 @@ class Fingerprint internal constructor(
     /**
      * The match for this [Fingerprint]. Null if unmatched.
      */
+    /*
     context(BytecodePatchContext)
     private val matchOrNull: Match?
         get() = matchOrNull()
+    */
 
     /**
      * Match using [BytecodePatchContext.lookupMaps].
@@ -69,10 +158,10 @@ class Fingerprint internal constructor(
      * @return The [Match] if a match was found or if the fingerprint is already matched to a method, null otherwise.
      */
     context(BytecodePatchContext)
-    internal fun matchOrNull(): Match? {
+    internal suspend fun matchOrNull(): Match? {
         if (_matchOrNull != null) return _matchOrNull
 
-        var match = strings?.mapNotNull {
+        val match = strings?.mapNotNull {
             lookupMaps.methodsByStrings[it]
         }?.minByOrNull { it.size }?.let { methodClasses ->
             methodClasses.forEach { (classDef, method) ->
@@ -84,12 +173,9 @@ class Fingerprint internal constructor(
         }
         if (match != null) return match
 
-        classes.forEach { classDef ->
-            match = matchOrNull(classDef)
-            if (match != null) return match
+        return withContext(Dispatchers.Default) {
+            classes.concurrentFirstNotNullOfOrNull<ClassDef, Match> { matchOrNull(it) }
         }
-
-        return null
     }
 
     /**
@@ -120,7 +206,7 @@ class Fingerprint internal constructor(
      * @return The [Match] if a match was found or if the fingerprint is already matched to a method, null otherwise.
      */
     context(BytecodePatchContext)
-    fun matchOrNull(
+    suspend fun matchOrNull(
         method: Method,
     ) = matchOrNull(method, classBy { method.definingClass == it.type }!!.immutableClass)
 
@@ -182,7 +268,8 @@ class Fingerprint internal constructor(
                             return@forEachIndexed
                         }
 
-                        val string = ((instruction as ReferenceInstruction).reference as StringReference).string
+                        val string =
+                            ((instruction as ReferenceInstruction).reference as StringReference).string
                         val index = stringsList.indexOfFirst(string::contains)
                         if (index == -1) return@forEachIndexed
 
@@ -259,8 +346,7 @@ class Fingerprint internal constructor(
      * @throws PatchException If the [Fingerprint] has not been matched.
      */
     context(BytecodePatchContext)
-    private val match
-        get() = matchOrNull ?: throw exception
+    private suspend fun match() = matchOrNull() ?: throw exception
 
     /**
      * Match using a [ClassDef].
@@ -283,7 +369,7 @@ class Fingerprint internal constructor(
      * @throws PatchException If the fingerprint has not been matched.
      */
     context(BytecodePatchContext)
-    fun match(
+    suspend fun match(
         method: Method,
     ) = matchOrNull(method) ?: throw exception
 
@@ -305,15 +391,13 @@ class Fingerprint internal constructor(
      * The class the matching method is a member of.
      */
     context(BytecodePatchContext)
-    val originalClassDefOrNull
-        get() = matchOrNull?.originalClassDef
+    suspend fun originalClassDefOrNull() = matchOrNull()?.originalClassDef
 
     /**
      * The matching method.
      */
     context(BytecodePatchContext)
-    val originalMethodOrNull
-        get() = matchOrNull?.originalMethod
+    suspend fun originalMethodOrNull() = matchOrNull()?.originalMethod
 
     /**
      * The mutable version of [originalClassDefOrNull].
@@ -322,8 +406,7 @@ class Fingerprint internal constructor(
      * Use [originalClassDefOrNull] if mutable access is not required.
      */
     context(BytecodePatchContext)
-    val classDefOrNull
-        get() = matchOrNull?.classDef
+    suspend fun classDefOrNull() = matchOrNull()?.classDef
 
     /**
      * The mutable version of [originalMethodOrNull].
@@ -332,22 +415,19 @@ class Fingerprint internal constructor(
      * Use [originalMethodOrNull] if mutable access is not required.
      */
     context(BytecodePatchContext)
-    val methodOrNull
-        get() = matchOrNull?.method
+    suspend fun methodOrNull() = matchOrNull()?.method
 
     /**
      * The match for the opcode pattern.
      */
     context(BytecodePatchContext)
-    val patternMatchOrNull
-        get() = matchOrNull?.patternMatch
+    suspend fun patternMatchOrNull() = matchOrNull()?.patternMatch
 
     /**
      * The matches for the strings.
      */
     context(BytecodePatchContext)
-    val stringMatchesOrNull
-        get() = matchOrNull?.stringMatches
+    suspend fun stringMatchesOrNull() = matchOrNull()?.stringMatches
 
     /**
      * The class the matching method is a member of.
@@ -355,8 +435,7 @@ class Fingerprint internal constructor(
      * @throws PatchException If the fingerprint has not been matched.
      */
     context(BytecodePatchContext)
-    val originalClassDef
-        get() = match.originalClassDef
+    suspend fun originalClassDef() = match().originalClassDef
 
     /**
      * The matching method.
@@ -364,8 +443,7 @@ class Fingerprint internal constructor(
      * @throws PatchException If the fingerprint has not been matched.
      */
     context(BytecodePatchContext)
-    val originalMethod
-        get() = match.originalMethod
+    suspend fun originalMethod() = match().originalMethod
 
     /**
      * The mutable version of [originalClassDef].
@@ -376,8 +454,7 @@ class Fingerprint internal constructor(
      * @throws PatchException If the fingerprint has not been matched.
      */
     context(BytecodePatchContext)
-    val classDef
-        get() = match.classDef
+    suspend fun classDef() = match().classDef
 
     /**
      * The mutable version of [originalMethod].
@@ -388,8 +465,7 @@ class Fingerprint internal constructor(
      * @throws PatchException If the fingerprint has not been matched.
      */
     context(BytecodePatchContext)
-    val method
-        get() = match.method
+    suspend fun method() = match().method
 
     /**
      * The match for the opcode pattern.
@@ -397,8 +473,7 @@ class Fingerprint internal constructor(
      * @throws PatchException If the fingerprint has not been matched.
      */
     context(BytecodePatchContext)
-    val patternMatch
-        get() = match.patternMatch
+    suspend fun patternMatch() = match().patternMatch
 
     /**
      * The matches for the strings.
@@ -406,8 +481,7 @@ class Fingerprint internal constructor(
      * @throws PatchException If the fingerprint has not been matched.
      */
     context(BytecodePatchContext)
-    val stringMatches
-        get() = match.stringMatches
+    suspend fun stringMatches() = match().stringMatches
 }
 
 /**
@@ -431,7 +505,7 @@ class Match internal constructor(
      * Accessing this property allocates a [ClassProxy].
      * Use [originalClassDef] if mutable access is not required.
      */
-    val classDef by lazy { proxy(originalClassDef).mutableClass }
+    val classDef by lazy { syncProxy(originalClassDef).mutableClass }
 
     /**
      * The mutable version of [originalMethod].
@@ -439,7 +513,14 @@ class Match internal constructor(
      * Accessing this property allocates a [ClassProxy].
      * Use [originalMethod] if mutable access is not required.
      */
-    val method by lazy { classDef.methods.first { MethodUtil.methodSignaturesMatch(it, originalMethod) } }
+    val method by lazy {
+        classDef.methods.first {
+            MethodUtil.methodSignaturesMatch(
+                it,
+                originalMethod
+            )
+        }
+    }
 
     /**
      * A match for an opcode pattern.

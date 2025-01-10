@@ -8,13 +8,15 @@ import com.android.tools.smali.dexlib2.iface.ClassDef
  *
  * @param classes The classes to be backed by proxies.
  */
-class ProxyClassList internal constructor(classes: MutableList<ClassDef>) : MutableList<ClassDef> by classes {
+class ProxyClassList internal constructor(
+    classes: MutableList<ClassDef>,
+) : MutableList<ClassDef> by classes {
     internal val proxyPool = mutableListOf<ClassProxy>()
 
     /**
      * Replace all classes with their mutated versions.
      */
-    internal fun replaceClasses() =
+    internal fun replaceClasses() {
         proxyPool.removeIf { proxy ->
             // If the proxy is unused, return false to keep it in the proxies list.
             if (!proxy.resolved) return@removeIf false
@@ -26,4 +28,5 @@ class ProxyClassList internal constructor(classes: MutableList<ClassDef>) : Muta
             // Return true to remove the proxy from the proxies list.
             return@removeIf true
         }
+    }
 }

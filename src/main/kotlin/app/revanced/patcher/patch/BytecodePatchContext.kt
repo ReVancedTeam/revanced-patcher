@@ -3,6 +3,8 @@ package app.revanced.patcher.patch
 import app.revanced.patcher.InternalApi
 import app.revanced.patcher.PatcherConfig
 import app.revanced.patcher.PatcherResult
+import app.revanced.patcher.concurrentFind
+import app.revanced.patcher.concurrentFirstNotNullOfOrNull
 import app.revanced.patcher.extensions.InstructionExtensions.instructionsOrNull
 import app.revanced.patcher.util.ClassMerger.merge
 import app.revanced.patcher.util.MethodNavigator
@@ -16,6 +18,8 @@ import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import lanchon.multidexlib2.BasicDexFileNamer
 import lanchon.multidexlib2.DexIO
 import lanchon.multidexlib2.MultiDexIO
@@ -65,9 +69,15 @@ class BytecodePatchContext internal constructor(private val config: PatcherConfi
      *
      * @param bytecodePatch The [BytecodePatch] to merge the extension of.
      */
-    internal fun mergeExtension(bytecodePatch: BytecodePatch) {
+    internal suspend fun mergeExtension(bytecodePatch: BytecodePatch) {
         bytecodePatch.extensionInputStream?.get()?.use { extensionStream ->
-            RawDexIO.readRawDexFile(extensionStream, 0, null).classes.forEach { classDef ->
+            withContext(Dispatchers.IO) {
+                RawDexIO.readRawDexFile(
+                    extensionStream,
+                    0,
+                    null
+                )
+            }.classes.forEach { classDef ->
                 val existingClass = lookupMaps.classesByType[classDef.type] ?: run {
                     logger.fine { "Adding class \"$classDef\"" }
 
@@ -98,8 +108,20 @@ class BytecodePatchContext internal constructor(private val config: PatcherConfi
      * @param predicate A predicate to match the class.
      * @return A proxy for the first class that matches the predicate.
      */
-    fun classBy(predicate: (ClassDef) -> Boolean) =
-        classes.proxyPool.find { predicate(it.immutableClass) } ?: classes.find(predicate)?.let { proxy(it) }
+    suspend fun classBy(predicate: (ClassDef) -> Boolean): ClassProxy? =
+        withContext(Dispatchers.Default) {
+            // val proxy = synchronized(classes.proxyPool) { classes.proxyPool.find { predicate(it.immutableClass) } }
+            val proxy = classes.proxyPool.concurrentFind { predicate(it.immutableClass) }
+            if (proxy != null) return@withContext proxy
+
+            val classDef = classes.concurrentFind { predicate(it) }
+            if (classDef != null) {
+                // return proxy(classDef)
+                return@withContext ClassProxy(classDef).also { classes.proxyPool.add(it) }
+            }
+
+            return@withContext null
+        }
 
     /**
      * Proxy the class to allow mutation.
@@ -108,9 +130,26 @@ class BytecodePatchContext internal constructor(private val config: PatcherConfi
      *
      * @return A proxy for the class.
      */
-    fun proxy(classDef: ClassDef) = classes.proxyPool.find {
-        it.immutableClass.type == classDef.type
-    } ?: ClassProxy(classDef).also { classes.proxyPool.add(it) }
+    suspend fun proxy(classDef: ClassDef) = withContext(Dispatchers.Default) {
+        classes.proxyPool.concurrentFind { it.immutableClass.type == classDef.type }
+            ?: ClassProxy(classDef).also { classes.proxyPool.add(it) }
+    }
+
+    internal fun syncProxy(classDef: ClassDef) =
+        classes.proxyPool.find { it.immutableClass.type == classDef.type }
+            ?: ClassProxy(classDef).also { classes.proxyPool.add(it) }
+
+    internal fun classBySync(predicate: (ClassDef) -> Boolean): ClassProxy? {
+        val proxy = classes.proxyPool.find { predicate(it.immutableClass) }
+        if (proxy != null) return proxy
+
+        val classDef = classes.find(predicate)
+        if (classDef != null) {
+            return ClassProxy(classDef).also { classes.proxyPool.add(it) }
+        }
+
+        return null
+    }
 
     /**
      * Navigate a method.
@@ -145,7 +184,8 @@ class BytecodePatchContext internal constructor(private val config: PatcherConfi
                     BasicDexFileNamer(),
                     object : DexFile {
                         override fun getClasses() =
-                            this@BytecodePatchContext.classes.also(ProxyClassList::replaceClasses).toSet()
+                            this@BytecodePatchContext.classes.also(ProxyClassList::replaceClasses)
+                                .toSet()
 
                         override fun getOpcodes() = this@BytecodePatchContext.opcodes
                     },
@@ -187,7 +227,8 @@ class BytecodePatchContext internal constructor(private val config: PatcherConfi
                             return@instructions
                         }
 
-                        val string = ((instruction as ReferenceInstruction).reference as StringReference).string
+                        val string =
+                            ((instruction as ReferenceInstruction).reference as StringReference).string
 
                         methodsByStrings[string] = methodClassPair
                     }

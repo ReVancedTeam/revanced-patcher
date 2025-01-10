@@ -64,9 +64,9 @@ internal object PatcherTest {
         patches()
 
         assertEquals(
-            listOf("1", "2", "3", "4", "-1", "-2"),
-            executed,
-            "Expected patches to be executed in correct order.",
+            setOf("1", "2", "3", "4", "-1", "-2"),
+            executed.toSet(),
+            "Unexpected patch results",
         )
     }
 

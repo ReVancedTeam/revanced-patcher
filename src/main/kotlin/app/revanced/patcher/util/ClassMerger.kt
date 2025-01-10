@@ -33,7 +33,7 @@ internal object ClassMerger {
      * @param context The context to traverse the class hierarchy in.
      * @return The merged class or the original class if no merge was needed.
      */
-    fun ClassDef.merge(
+    suspend fun ClassDef.merge(
         otherClass: ClassDef,
         context: BytecodePatchContext,
     ) = this
@@ -92,7 +92,7 @@ internal object ClassMerger {
      * @param reference The class to check the [AccessFlags] of.
      * @param context The context to traverse the class hierarchy in.
      */
-    private fun ClassDef.publicize(
+    private suspend fun ClassDef.publicize(
         reference: ClassDef,
         context: BytecodePatchContext,
     ) = if (reference.accessFlags.isPublic() && !accessFlags.isPublic()) {
@@ -174,7 +174,7 @@ internal object ClassMerger {
          * @param targetClass the class to start traversing the class hierarchy from
          * @param callback function that is called for every class in the hierarchy
          */
-        fun BytecodePatchContext.traverseClassHierarchy(
+        suspend fun BytecodePatchContext.traverseClassHierarchy(
             targetClass: MutableClass,
             callback: MutableClass.() -> Unit,
         ) {
