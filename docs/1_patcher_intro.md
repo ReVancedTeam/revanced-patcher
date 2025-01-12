@@ -108,4 +108,4 @@ val resources = patcherResult.resources
 
 The next page teaches the fundamentals of ReVanced Patches.
 
-Continue: [🧩 Introduction to ReVanced Patches](2_patches_intro.md)
+Continue: [🧩 Introduction to ReVanced Patches](2_0_0_patches_intro.md)
