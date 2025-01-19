@@ -1,3 +1,10 @@
+# [21.1.0-dev.1](https://github.com/ReVanced/revanced-patcher/compare/v21.0.0...v21.1.0-dev.1) (2024-12-07)
+
+
+### Features
+
+* Add identity hash code to unnamed patches ([88a3252](https://github.com/ReVanced/revanced-patcher/commit/88a325257494939a79fb30dd51d60c5c52546755))
+
 # [21.0.0](https://github.com/ReVanced/revanced-patcher/compare/v20.0.2...v21.0.0) (2024-11-05)
 
 

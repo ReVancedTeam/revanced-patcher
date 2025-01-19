@@ -73,6 +73,8 @@ public final class app/revanced/patcher/Patcher : java/io/Closeable {
 }
 
 public final class app/revanced/patcher/PatcherConfig {
+	public fun <init> (Ljava/io/File;Ljava/io/File;Ljava/io/File;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/io/File;Ljava/io/File;Ljava/io/File;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun <init> (Ljava/io/File;Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/io/File;Ljava/io/File;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 }

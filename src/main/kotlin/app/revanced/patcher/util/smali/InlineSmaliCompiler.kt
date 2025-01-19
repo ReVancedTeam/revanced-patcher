@@ -50,7 +50,7 @@ class InlineSmaliCompiler {
                     registers,
                     instructions,
                 )
-            val reader = InputStreamReader(input.byteInputStream())
+            val reader = InputStreamReader(input.byteInputStream(), Charsets.UTF_8)
             val lexer: LexerErrorInterface = smaliFlexLexer(reader, 15)
             val tokens = CommonTokenStream(lexer as TokenSource)
             val parser = smaliParser(tokens)

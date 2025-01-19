@@ -34,7 +34,7 @@ import java.util.logging.Logger
 class BytecodePatchContext internal constructor(private val config: PatcherConfig) :
     PatchContext<Set<PatcherResult.PatchedDexFile>>,
     Closeable {
-    private val logger = Logger.getLogger(this::javaClass.name)
+    private val logger = Logger.getLogger(this::class.java.name)
 
     /**
      * [Opcodes] of the supplied [PatcherConfig.apkFile].
