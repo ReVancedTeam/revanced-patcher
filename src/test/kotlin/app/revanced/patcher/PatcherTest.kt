@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.assertAll
+import org.junit.jupiter.api.assertThrows
 import java.util.logging.Logger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,6 +39,7 @@ internal object PatcherTest {
             every { this@mockk() } answers { callOriginal() }
         }
     }
+
 
     @Test
     fun `executes patches in correct order`() {
@@ -69,6 +71,7 @@ internal object PatcherTest {
             "Expected patches to be executed in correct order.",
         )
     }
+
 
     @Test
     fun `handles execution of patches correctly when exceptions occur`() {
@@ -150,7 +153,7 @@ internal object PatcherTest {
         val patch = bytecodePatch {
             execute {
                 // Fingerprint can never match.
-                val fingerprint = fingerprint { }
+                val fingerprint by fingerprint { }
 
                 // Throws, because the fingerprint can't be matched.
                 fingerprint.patternMatch
@@ -191,9 +194,9 @@ internal object PatcherTest {
             ),
         )
 
-        val fingerprint = fingerprint { returns("V") }
-        val fingerprint2 = fingerprint { returns("V") }
-        val fingerprint3 = fingerprint { returns("V") }
+        val fingerprint by fingerprint { returns("V") }
+        val fingerprint2 by fingerprint { returns("V") }
+        val fingerprint3 by fingerprint { returns("V") }
 
         val patches = setOf(
             bytecodePatch {
@@ -214,6 +217,242 @@ internal object PatcherTest {
                 { assertNotNull(fingerprint2.originalClassDefOrNull) },
                 { assertNotNull(fingerprint3.originalClassDefOrNull) },
             )
+        }
+    }
+
+    @Test
+    fun `MethodCallFilter smali parsing`() {
+        with(patcher.context.bytecodeContext) {
+            var definingClass = "Landroid/view/View;"
+            var name = "inflate"
+            var parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "J", "Landroid/view/ViewGroup;")
+            var returnType = "Landroid/view/View;"
+            var methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            var filter = MethodCallFilter.parseJvmMethodCall(methodSignature)
+
+            assertAll(
+                { assertTrue(definingClass == filter.definingClass!!()) },
+                { assertTrue(name == filter.name!!()) },
+                { assertTrue(parameters == filter.parameters!!()) },
+                { assertTrue(returnType == filter.returnType!!()) },
+            )
+
+
+            definingClass = "Landroid/view/View\$InnerClass;"
+            name = "inflate"
+            parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "Landroid/view/ViewGroup\$ViewInnerClass;", "J")
+            returnType = "V"
+            methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            filter = MethodCallFilter.parseJvmMethodCall(methodSignature)
+
+            assertAll(
+                { assertTrue(definingClass == filter.definingClass!!()) },
+                { assertTrue(name == filter.name!!()) },
+                { assertTrue(parameters == filter.parameters!!()) },
+                { assertTrue(returnType == filter.returnType!!()) },
+            )
+
+            definingClass = "Landroid/view/View\$InnerClass;"
+            name = "inflate"
+            parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "Landroid/view/ViewGroup\$ViewInnerClass;", "J")
+            returnType = "I"
+            methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            filter = MethodCallFilter.parseJvmMethodCall(methodSignature)
+
+            assertAll(
+                { assertTrue(definingClass == filter.definingClass!!()) },
+                { assertTrue(name == filter.name!!()) },
+                { assertTrue(parameters == filter.parameters!!()) },
+                { assertTrue(returnType == filter.returnType!!()) },
+            )
+
+            definingClass = "Landroid/view/View\$InnerClass;"
+            name = "inflate"
+            parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "Landroid/view/ViewGroup\$ViewInnerClass;", "J")
+            returnType = "[I"
+            methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            filter = MethodCallFilter.parseJvmMethodCall(methodSignature)
+
+            assertAll(
+                { assertTrue(definingClass == filter.definingClass!!()) },
+                { assertTrue(name == filter.name!!()) },
+                { assertTrue(parameters == filter.parameters!!()) },
+                { assertTrue(returnType == filter.returnType!!()) },
+            )
+        }
+    }
+
+    @Test
+    fun `MethodCallFilter smali bad input`() {
+        with(patcher.context.bytecodeContext) {
+            var definingClass = "Landroid/view/View;"
+            var name = "inflate"
+            var parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "J", "Landroid/view/ViewGroup;")
+            var returnType = "Landroid/view/View;"
+            var methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            assertThrows<IllegalArgumentException>("Bad max instructions before") {
+                MethodCallFilter.parseJvmMethodCall(methodSignature, null, -1)
+            }
+
+
+            definingClass = "Landroid/view/View"
+            name = "inflate"
+            parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "J", "Landroid/view/ViewGroup;")
+            returnType = "Landroid/view/View;"
+            methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            assertThrows<IllegalArgumentException>("Defining class missing semicolon") {
+                MethodCallFilter.parseJvmMethodCall(methodSignature)
+            }
+
+
+            definingClass = "Landroid/view/View;"
+            name = "inflate"
+            parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "J", "Landroid/view/ViewGroup")
+            returnType = "Landroid/view/View"
+            methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            assertThrows<IllegalArgumentException>("Return type missing semicolon") {
+                MethodCallFilter.parseJvmMethodCall(methodSignature)
+            }
+
+
+            definingClass = "Landroid/view/View;"
+            name = "inflate"
+            parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "J", "Landroid/view/ViewGroup;")
+            returnType = ""
+            methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            assertThrows<IllegalArgumentException>("Empty return type") {
+                MethodCallFilter.parseJvmMethodCall(methodSignature)
+            }
+
+
+            definingClass = "Landroid/view/View;"
+            name = "inflate"
+            parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "J", "Landroid/view/ViewGroup;")
+            returnType = "Landroid/view/View"
+            methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            assertThrows<IllegalArgumentException>("Return type class missing semicolon") {
+                MethodCallFilter.parseJvmMethodCall(methodSignature)
+            }
+
+
+            definingClass = "Landroid/view/View;"
+            name = "inflate"
+            parameters = listOf("[Ljava/lang/String;", "I", "Z", "F", "J", "Landroid/view/ViewGroup;")
+            returnType = "Q"
+            methodSignature = "$definingClass->$name(${parameters.joinToString("")})$returnType"
+
+            assertThrows<IllegalArgumentException>("Bad primitive type") {
+                MethodCallFilter.parseJvmMethodCall(methodSignature)
+            }
+        }
+    }
+
+    @Test
+    fun `FieldAccess smali parsing`() {
+        with(patcher.context.bytecodeContext) {
+            var definingClass = "Ljava/lang/Boolean;"
+            var name = "TRUE"
+            var type = "Ljava/lang/Boolean;"
+            var fieldSignature = "$definingClass->$name:$type"
+
+            var filter = FieldAccessFilter.parseJvmFieldAccess(fieldSignature)
+
+            assertAll(
+                { assertTrue(definingClass == filter.definingClass!!()) },
+                { assertTrue(name == filter.name!!()) },
+                { assertTrue(type == filter.type!!()) },
+            )
+
+
+            definingClass = "Landroid/view/View\$InnerClass;"
+            name = "arrayField"
+            type = "[Ljava/lang/Boolean;"
+            fieldSignature = "$definingClass->$name:$type"
+
+            filter = FieldAccessFilter.parseJvmFieldAccess(fieldSignature)
+
+            assertAll(
+                { assertTrue(definingClass == filter.definingClass!!()) },
+                { assertTrue(name == filter.name!!()) },
+                { assertTrue(type == filter.type!!()) },
+            )
+
+
+            definingClass = "Landroid/view/View\$InnerClass;"
+            name = "primitiveField"
+            type = "I"
+            fieldSignature = "$definingClass->$name:$type"
+
+            filter = FieldAccessFilter.parseJvmFieldAccess(fieldSignature)
+
+            assertAll(
+                { assertTrue(definingClass == filter.definingClass!!()) },
+                { assertTrue(name == filter.name!!()) },
+                { assertTrue(type == filter.type!!()) },
+            )
+
+
+            definingClass = "Landroid/view/View\$InnerClass;"
+            name = "primitiveField"
+            type = "[I"
+            fieldSignature = "$definingClass->$name:$type"
+
+            filter = FieldAccessFilter.parseJvmFieldAccess(fieldSignature)
+
+            assertAll(
+                { assertTrue(definingClass == filter.definingClass!!()) },
+                { assertTrue(name == filter.name!!()) },
+                { assertTrue(type == filter.type!!()) },
+            )
+        }
+    }
+
+    @Test
+    fun `FieldAccess smali bad input`() {
+        with(patcher.context.bytecodeContext) {
+            assertThrows<IllegalArgumentException>("Defining class missing semicolon") {
+                FieldAccessFilter.parseJvmFieldAccess("Landroid/view/View->fieldName:Landroid/view/View;")
+            }
+
+            assertThrows<IllegalArgumentException>("Type class missing semicolon") {
+                FieldAccessFilter.parseJvmFieldAccess("Landroid/view/View;->fieldName:Landroid/view/View")
+            }
+
+            assertThrows<IllegalArgumentException>("Empty field name") {
+                FieldAccessFilter.parseJvmFieldAccess("Landroid/view/View;->:Landroid/view/View;")
+            }
+
+            assertThrows<IllegalArgumentException>("Invalid primitive type") {
+                FieldAccessFilter.parseJvmFieldAccess("Landroid/view/View;->fieldName:Q")
+            }
+        }
+    }
+
+    @Test
+    fun `NewInstance bad input`() {
+        with(patcher.context.bytecodeContext) {
+            assertThrows<IllegalArgumentException>("Defining class missing semicolon") {
+                newInstance("Lcom/whatever/BadClassType")
+            }
+        }
+    }
+
+
+    @Test
+    fun `CheckCast bad input`() {
+        with(patcher.context.bytecodeContext) {
+            assertThrows<IllegalArgumentException>("Defining class missing semicolon") {
+                checkCast("Lcom/whatever/BadClassType")
+            }
         }
     }
 

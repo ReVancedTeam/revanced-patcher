@@ -185,7 +185,10 @@ val patch = bytecodePatch(name = "Complex patch") {
     extendWith("complex-patch.rve")
 
     execute {
-        fingerprint.match!!.mutableMethod.addInstructions(0, "invoke-static { }, LComplexPatch;->doSomething()V")
+        fingerprint.match().mutableMethod.addInstructions(
+          0,
+          "invoke-static { }, LComplexPatch;->doSomething()V"
+        )
     }
 }
 ```

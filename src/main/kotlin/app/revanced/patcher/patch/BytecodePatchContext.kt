@@ -167,7 +167,7 @@ class BytecodePatchContext internal constructor(private val config: PatcherConfi
      */
     internal class LookupMaps internal constructor(classes: List<ClassDef>) : Closeable {
         /**
-         * Methods associated by strings referenced in it.
+         * Methods associated by strings referenced in them.
          */
         internal val methodsByStrings = MethodClassPairsLookupMap()
 
@@ -182,9 +182,9 @@ class BytecodePatchContext internal constructor(private val config: PatcherConfi
                     val methodClassPair: MethodClassPair = method to classDef
 
                     // Add strings contained in the method as the key.
-                    method.instructionsOrNull?.forEach instructions@{ instruction ->
+                    method.instructionsOrNull?.forEach { instruction ->
                         if (instruction.opcode != Opcode.CONST_STRING && instruction.opcode != Opcode.CONST_STRING_JUMBO) {
-                            return@instructions
+                            return@forEach
                         }
 
                         val string = ((instruction as ReferenceInstruction).reference as StringReference).string
